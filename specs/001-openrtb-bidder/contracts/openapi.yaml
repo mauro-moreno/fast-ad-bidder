@@ -1,0 +1,654 @@
+openapi: 3.0.3
+info:
+  title: OpenRTB Bidder API
+  description: |
+    Real-time bidding service implementing OpenRTB 2.5 specification for Google Ad Exchange integration.
+
+    **Security**: All endpoints require mutual TLS (mTLS) authentication.
+
+    **Performance SLA**: Bid endpoint must respond within 100ms at p95 latency.
+  version: 1.0.0
+  contact:
+    name: Fast Ad Bidder Team
+    email: team@fast-ad-bidder.example.com
+
+servers:
+  - url: https://bidder.fast-ad-bidder.example.com
+    description: Production bidder endpoint
+
+security:
+  - mutualTLS: []
+
+tags:
+  - name: Bidding
+    description: OpenRTB bid request/response endpoints
+  - name: Notifications
+    description: Win notification callbacks
+  - name: Health
+    description: Service health and monitoring
+
+paths:
+  /bid:
+    post:
+      tags:
+        - Bidding
+      summary: Receive bid request and return bid response
+      description: |
+        **User Story 1 (P1)**: Validates incoming OpenRTB 2.5 bid requests.
+        **User Story 2 (P2)**: Generates bid responses based on campaign matching.
+
+        This is the main bidding endpoint called by Google Ad Exchange for each auction opportunity.
+
+        **OpenRTB Specification**: Conforms to OpenRTB 2.5 BidRequest/BidResponse schema.
+        **Performance Requirement**: Must respond within 100ms (p95 latency).
+        **Authentication**: Requires valid mTLS client certificate from Google Ad Exchange.
+      operationId: handleBidRequest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BidRequest'
+            examples:
+              validBannerRequest:
+                summary: Valid banner bid request
+                value:
+                  id: "auction-123"
+                  imp:
+                    - id: "imp-1"
+                      banner:
+                        w: 300
+                        h: 250
+                        pos: 1
+                      bidfloor: 0.50
+                      bidfloorcur: "USD"
+                  site:
+                    domain: "example.com"
+                    page: "https://example.com/article"
+                  device:
+                    ua: "Mozilla/5.0..."
+                    ip: "192.0.2.1"
+                    devicetype: 2
+                    geo:
+                      country: "USA"
+                  tmax: 120
+      responses:
+        '200':
+          description: Bid response (may contain zero or more bids)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BidResponse'
+              examples:
+                successfulBid:
+                  summary: Successful bid response
+                  value:
+                    id: "auction-123"
+                    seatbid:
+                      - bid:
+                          - id: "bid-456"
+                            impid: "imp-1"
+                            price: 2.50
+                            adid: "creative-789"
+                            adomain: ["advertiser.com"]
+                            crid: "creative-789"
+                            w: 300
+                            h: 250
+                            nurl: "https://bidder.example.com/win?bid=bid-456"
+                    cur: "USD"
+                noBid:
+                  summary: No-bid response
+                  value:
+                    id: "auction-123"
+                    seatbid: []
+                    nbr: 2
+                    cur: "USD"
+        '400':
+          description: Invalid bid request (validation failure)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                missingImpressions:
+                  summary: Missing required impressions
+                  value:
+                    error: "Invalid bid request"
+                    message: "Bid request must contain at least one impression"
+                    code: "VALIDATION_ERROR"
+                malformedJSON:
+                  summary: Malformed JSON payload
+                  value:
+                    error: "Invalid request body"
+                    message: "Failed to parse JSON: unexpected end of input"
+                    code: "PARSE_ERROR"
+        '401':
+          description: Unauthorized (invalid or missing mTLS certificate)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /win:
+    get:
+      tags:
+        - Notifications
+      summary: Receive win notification from Google Ad Exchange
+      description: |
+        **User Story 3 (P3)**: Processes win notifications to track successful bids.
+
+        This endpoint is called by Google Ad Exchange when a bid wins an auction.
+        The URL is provided in the `nurl` field of the bid response.
+
+        **Processing**:
+        1. Match bid ID to original bid
+        2. Deduct win price from campaign budget
+        3. Update metrics
+        4. Return 200 OK immediately (async processing)
+
+        **Timing**: Win notifications may arrive seconds to minutes after the original bid.
+      operationId: handleWinNotification
+      parameters:
+        - name: bid
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Bid ID from original bid response
+          example: "bid-456"
+        - name: price
+          in: query
+          required: true
+          schema:
+            type: number
+            format: double
+          description: Final settlement price (CPM in micros)
+          example: 2500000
+        - name: currency
+          in: query
+          required: false
+          schema:
+            type: string
+            default: "USD"
+          description: Currency code
+          example: "USD"
+      responses:
+        '200':
+          description: Win notification received and processed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+        '404':
+          description: Bid ID not found (orphaned win or cache miss)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                error: "Bid not found"
+                message: "No matching bid found for ID: bid-456"
+                code: "BID_NOT_FOUND"
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check endpoint
+      description: |
+        Returns service health status for load balancer and monitoring.
+
+        **Constitution Requirement**: All services must expose health check endpoints.
+      operationId: healthCheck
+      security: []  # No authentication required for health check
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: "healthy"
+                version: "1.0.0"
+                uptime_seconds: 3600
+                campaigns_loaded: 42
+                last_reload: "2025-12-27T12:00:00Z"
+        '503':
+          description: Service is unhealthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+              example:
+                status: "unhealthy"
+                version: "1.0.0"
+                error: "Campaign store not initialized"
+
+  /metrics:
+    get:
+      tags:
+        - Health
+      summary: Prometheus metrics endpoint
+      description: |
+        Exposes Prometheus metrics for monitoring.
+
+        **Constitution Requirement**: Services must expose metrics for latency, throughput, and error rates.
+
+        **Metrics Exposed**:
+        - `bidder_requests_total` - Total bid requests received
+        - `bidder_bids_total` - Total bids submitted
+        - `bidder_wins_total` - Total wins received
+        - `bidder_latency_seconds` - Bid processing latency histogram
+        - `bidder_errors_total` - Total errors by type
+      operationId: getMetrics
+      security: []  # No authentication for metrics scraping
+      responses:
+        '200':
+          description: Prometheus metrics in text format
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: |
+                # HELP bidder_requests_total Total bid requests received
+                # TYPE bidder_requests_total counter
+                bidder_requests_total{status="valid"} 10000
+                bidder_requests_total{status="invalid"} 42
+
+                # HELP bidder_latency_seconds Bid processing latency
+                # TYPE bidder_latency_seconds histogram
+                bidder_latency_seconds_bucket{le="0.01"} 1000
+                bidder_latency_seconds_bucket{le="0.05"} 8000
+                bidder_latency_seconds_bucket{le="0.1"} 9500
+                bidder_latency_seconds_sum 450.5
+                bidder_latency_seconds_count 10000
+
+components:
+  securitySchemes:
+    mutualTLS:
+      type: mutualTLS
+      description: |
+        Mutual TLS (mTLS) authentication required for all bidding endpoints.
+        Client must present valid certificate signed by trusted CA.
+
+  schemas:
+    BidRequest:
+      type: object
+      description: OpenRTB 2.5 Bid Request
+      required:
+        - id
+        - imp
+      properties:
+        id:
+          type: string
+          description: Unique auction ID
+          example: "auction-123"
+        imp:
+          type: array
+          description: Array of impression opportunities
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Impression'
+        site:
+          $ref: '#/components/schemas/Site'
+        app:
+          $ref: '#/components/schemas/App'
+        device:
+          $ref: '#/components/schemas/Device'
+        user:
+          $ref: '#/components/schemas/User'
+        tmax:
+          type: integer
+          description: Maximum time in milliseconds to submit a bid
+          example: 120
+        wseat:
+          type: array
+          description: Whitelist of buyer seats allowed to bid
+          items:
+            type: string
+        bseat:
+          type: array
+          description: Block list of buyer seats restricted from bidding
+          items:
+            type: string
+        cur:
+          type: array
+          description: Allowed currencies for bids
+          items:
+            type: string
+          default: ["USD"]
+
+    Impression:
+      type: object
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          description: Unique impression ID within request
+          example: "imp-1"
+        banner:
+          $ref: '#/components/schemas/Banner'
+        displaymanager:
+          type: string
+          description: Name of ad mediation partner, SDK, or player
+          example: "Google AdX"
+        displaymanagerver:
+          type: string
+          description: Version of display manager
+        instl:
+          type: integer
+          description: 1 = interstitial/full-screen, 0 = normal
+          enum: [0, 1]
+          default: 0
+        tagid:
+          type: string
+          description: Identifier for specific ad placement
+        bidfloor:
+          type: number
+          format: double
+          description: Minimum bid price for this impression (CPM)
+          minimum: 0
+          example: 0.50
+        bidfloorcur:
+          type: string
+          description: Currency for bid floor
+          default: "USD"
+        secure:
+          type: integer
+          description: Flag to indicate if impression requires HTTPS
+          enum: [0, 1]
+
+    Banner:
+      type: object
+      description: Banner ad specifications
+      properties:
+        w:
+          type: integer
+          description: Width in device independent pixels
+          example: 300
+        h:
+          type: integer
+          description: Height in device independent pixels
+          example: 250
+        wmax:
+          type: integer
+          description: Maximum width
+        hmax:
+          type: integer
+          description: Maximum height
+        wmin:
+          type: integer
+          description: Minimum width
+        hmin:
+          type: integer
+          description: Minimum height
+        format:
+          type: array
+          description: Array of supported banner sizes
+          items:
+            $ref: '#/components/schemas/Format'
+        pos:
+          type: integer
+          description: Ad position on screen
+          example: 1
+
+    Format:
+      type: object
+      description: Supported banner format/size
+      properties:
+        w:
+          type: integer
+          description: Width in pixels
+        h:
+          type: integer
+          description: Height in pixels
+
+    Site:
+      type: object
+      description: Website details for display ads
+      properties:
+        domain:
+          type: string
+          description: Domain of the site
+          example: "example.com"
+        page:
+          type: string
+          description: URL of the page
+          example: "https://example.com/article"
+        cat:
+          type: array
+          description: IAB content categories
+          items:
+            type: string
+
+    App:
+      type: object
+      description: Mobile app details
+      properties:
+        bundle:
+          type: string
+          description: App bundle/package name
+          example: "com.example.app"
+        name:
+          type: string
+          description: App name
+        cat:
+          type: array
+          description: IAB content categories
+          items:
+            type: string
+
+    Device:
+      type: object
+      description: User device information
+      properties:
+        ua:
+          type: string
+          description: User agent string
+          example: "Mozilla/5.0..."
+        ip:
+          type: string
+          description: IPv4 address
+          example: "192.0.2.1"
+        ipv6:
+          type: string
+          description: IPv6 address
+        devicetype:
+          type: integer
+          description: Device type (1=Mobile, 2=PC, 3=TV, etc.)
+          example: 2
+        geo:
+          $ref: '#/components/schemas/Geo'
+
+    Geo:
+      type: object
+      description: Geographic location data
+      properties:
+        country:
+          type: string
+          description: Country code (ISO-3166-1-alpha-3)
+          example: "USA"
+        region:
+          type: string
+          description: Region code (ISO-3166-2)
+        city:
+          type: string
+          description: City name
+        zip:
+          type: string
+          description: Zip/postal code
+
+    User:
+      type: object
+      description: User demographic data
+      properties:
+        id:
+          type: string
+          description: Exchange-specific user ID
+        yob:
+          type: integer
+          description: Year of birth (4 digits)
+        gender:
+          type: string
+          description: Gender (M/F/O)
+          enum: [M, F, O]
+
+    BidResponse:
+      type: object
+      description: OpenRTB 2.5 Bid Response
+      required:
+        - id
+      properties:
+        id:
+          type: string
+          description: Must match BidRequest.id
+          example: "auction-123"
+        seatbid:
+          type: array
+          description: Array of seatbid objects
+          items:
+            $ref: '#/components/schemas/SeatBid'
+        bidid:
+          type: string
+          description: Bidder-generated response ID
+          example: "response-789"
+        cur:
+          type: string
+          description: Currency used in bid
+          default: "USD"
+        nbr:
+          type: integer
+          description: No-bid reason code (if seatbid is empty)
+
+    SeatBid:
+      type: object
+      description: Seat bid object containing bids
+      properties:
+        bid:
+          type: array
+          description: Array of bid objects
+          items:
+            $ref: '#/components/schemas/Bid'
+        seat:
+          type: string
+          description: Seat ID representing the bidder
+        group:
+          type: integer
+          description: 0 = impressions can be won individually
+          default: 0
+
+    Bid:
+      type: object
+      description: Individual bid for an impression
+      required:
+        - id
+        - impid
+        - price
+      properties:
+        id:
+          type: string
+          description: Unique bid ID
+          example: "bid-456"
+        impid:
+          type: string
+          description: ID of impression being bid on
+          example: "imp-1"
+        price:
+          type: number
+          format: double
+          description: Bid price (CPM)
+          minimum: 0
+          example: 2.50
+        adid:
+          type: string
+          description: Ad creative ID
+          example: "creative-789"
+        nurl:
+          type: string
+          description: Win notification URL
+          example: "https://bidder.example.com/win?bid=bid-456&price=${AUCTION_PRICE}"
+        adomain:
+          type: array
+          description: Advertiser domains
+          items:
+            type: string
+          example: ["advertiser.com"]
+        iurl:
+          type: string
+          description: Image URL for ad content review
+        cid:
+          type: string
+          description: Campaign ID
+        crid:
+          type: string
+          description: Creative ID
+          example: "creative-789"
+        w:
+          type: integer
+          description: Width of creative in pixels
+          example: 300
+        h:
+          type: integer
+          description: Height of creative in pixels
+          example: 250
+
+    Error:
+      type: object
+      description: Error response
+      properties:
+        error:
+          type: string
+          description: Error summary
+          example: "Invalid bid request"
+        message:
+          type: string
+          description: Detailed error message
+          example: "Bid request must contain at least one impression"
+        code:
+          type: string
+          description: Machine-readable error code
+          example: "VALIDATION_ERROR"
+
+    HealthStatus:
+      type: object
+      description: Service health status
+      properties:
+        status:
+          type: string
+          enum: [healthy, unhealthy]
+          description: Overall health status
+        version:
+          type: string
+          description: Service version
+          example: "1.0.0"
+        uptime_seconds:
+          type: integer
+          description: Service uptime in seconds
+        campaigns_loaded:
+          type: integer
+          description: Number of active campaigns loaded
+        last_reload:
+          type: string
+          format: date-time
+          description: Timestamp of last campaign reload
+        error:
+          type: string
+          description: Error description (if unhealthy)

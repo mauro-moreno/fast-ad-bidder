@@ -1,0 +1,209 @@
+{
+  "valid_request_banner_site": {
+    "id": "auction-123",
+    "imp": [
+      {
+        "id": "imp-1",
+        "banner": {
+          "w": 300,
+          "h": 250
+        },
+        "bidfloor": 0.50
+      }
+    ],
+    "site": {
+      "domain": "example.com",
+      "page": "https://example.com/news"
+    },
+    "device": {
+      "ip": "192.0.2.1",
+      "devicetype": 2,
+      "geo": {
+        "country": "USA"
+      }
+    },
+    "user": {
+      "id": "user-456"
+    }
+  },
+  "valid_request_banner_app": {
+    "id": "auction-456",
+    "imp": [
+      {
+        "id": "imp-2",
+        "banner": {
+          "w": 728,
+          "h": 90
+        },
+        "bidfloor": 1.00
+      }
+    ],
+    "app": {
+      "bundle": "com.example.app",
+      "name": "Example App"
+    },
+    "device": {
+      "ip": "192.0.2.2",
+      "devicetype": 1,
+      "geo": {
+        "country": "USA",
+        "region": "CA"
+      }
+    }
+  },
+  "valid_request_multiple_impressions": {
+    "id": "auction-789",
+    "imp": [
+      {
+        "id": "imp-3",
+        "banner": {
+          "w": 300,
+          "h": 250
+        },
+        "bidfloor": 0.75
+      },
+      {
+        "id": "imp-4",
+        "banner": {
+          "w": 728,
+          "h": 90
+        },
+        "bidfloor": 1.50
+      }
+    ],
+    "site": {
+      "domain": "publisher.com"
+    },
+    "device": {
+      "ip": "192.0.2.3",
+      "devicetype": 2,
+      "geo": {
+        "country": "USA"
+      }
+    }
+  },
+  "invalid_missing_id": {
+    "imp": [
+      {
+        "id": "imp-1",
+        "banner": {
+          "w": 300,
+          "h": 250
+        }
+      }
+    ],
+    "site": {
+      "domain": "example.com"
+    },
+    "device": {
+      "ip": "192.0.2.1",
+      "devicetype": 2
+    }
+  },
+  "invalid_missing_imp": {
+    "id": "auction-999",
+    "site": {
+      "domain": "example.com"
+    },
+    "device": {
+      "ip": "192.0.2.1",
+      "devicetype": 2
+    }
+  },
+  "invalid_empty_imp": {
+    "id": "auction-888",
+    "imp": [],
+    "site": {
+      "domain": "example.com"
+    },
+    "device": {
+      "ip": "192.0.2.1",
+      "devicetype": 2
+    }
+  },
+  "invalid_missing_site_and_app": {
+    "id": "auction-777",
+    "imp": [
+      {
+        "id": "imp-1",
+        "banner": {
+          "w": 300,
+          "h": 250
+        }
+      }
+    ],
+    "device": {
+      "ip": "192.0.2.1",
+      "devicetype": 2
+    }
+  },
+  "invalid_both_site_and_app": {
+    "id": "auction-666",
+    "imp": [
+      {
+        "id": "imp-1",
+        "banner": {
+          "w": 300,
+          "h": 250
+        }
+      }
+    ],
+    "site": {
+      "domain": "example.com"
+    },
+    "app": {
+      "bundle": "com.example.app"
+    },
+    "device": {
+      "ip": "192.0.2.1",
+      "devicetype": 2
+    }
+  },
+  "invalid_missing_device": {
+    "id": "auction-555",
+    "imp": [
+      {
+        "id": "imp-1",
+        "banner": {
+          "w": 300,
+          "h": 250
+        }
+      }
+    ],
+    "site": {
+      "domain": "example.com"
+    }
+  },
+  "malformed_json": "this is not valid JSON {{{",
+  "valid_request_with_user": {
+    "id": "auction-321",
+    "imp": [
+      {
+        "id": "imp-5",
+        "banner": {
+          "w": 300,
+          "h": 600
+        },
+        "bidfloor": 2.00
+      }
+    ],
+    "site": {
+      "domain": "premium.com"
+    },
+    "device": {
+      "ip": "192.0.2.4",
+      "devicetype": 2,
+      "geo": {
+        "country": "USA",
+        "region": "NY",
+        "city": "New York"
+      }
+    },
+    "user": {
+      "id": "user-123",
+      "geo": {
+        "country": "USA"
+      }
+    }
+  }
+}

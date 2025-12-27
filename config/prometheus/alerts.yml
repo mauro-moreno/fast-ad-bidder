@@ -1,0 +1,30 @@
+groups:
+  - name: bidder_alerts
+    interval: 30s
+    rules:
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, rate(bidder_latency_seconds_bucket[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Bidder p95 latency exceeds 100ms"
+          description: "p95 latency is {{ $value }}s (threshold: 0.1s)"
+
+      - alert: HighErrorRate
+        expr: rate(bidder_errors_total[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Bidder error rate exceeds 1%"
+          description: "Error rate is {{ $value }} (threshold: 0.01)"
+
+      - alert: BidderDown
+        expr: up{job="bidder"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Bidder service is down"
+          description: "Bidder has been down for more than 1 minute"

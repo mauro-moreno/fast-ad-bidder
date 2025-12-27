@@ -1,50 +1,134 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+<!--
+  Sync Impact Report
+  ==================
+  Version Change: [INITIAL] → 1.0.0
+  Modified Principles: N/A (initial version)
+  Added Sections:
+    - Core Principles (3 principles)
+    - Development Standards
+    - Quality Gates
+    - Governance
+  Removed Sections: N/A
+  Templates Requiring Updates:
+    ✅ plan-template.md - Constitution Check section updated
+    ✅ spec-template.md - Aligned with service-oriented requirements
+    ✅ tasks-template.md - Test-first workflow validated
+  Follow-up TODOs: None
+
+  Rationale for version 1.0.0:
+  - Initial constitution ratification
+  - Establishes baseline governance for Fast Ad Bidder project
+  - Defines 3 core non-negotiable principles
+-->
+
+# Fast Ad Bidder Constitution
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Service-Oriented Architecture
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+Every feature must be designed as an independently deployable service with clear boundaries.
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+**Rules**:
+- Services MUST have well-defined interfaces (API contracts, message schemas)
+- Services MUST be independently testable and deployable
+- Services MUST communicate through documented protocols (REST, gRPC, message queues)
+- Service boundaries MUST align with business capabilities, not technical layers
+- Cross-service dependencies MUST be explicit and versioned
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+**Rationale**: Ad bidding systems require high availability, independent scaling of bid processing vs. analytics, and the ability to modify auction logic without impacting campaign management. Service boundaries prevent cascading failures and enable independent team ownership.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### II. Test-First Development (NON-NEGOTIABLE)
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+All production code MUST be preceded by failing tests.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+**Rules**:
+- Tests MUST be written before implementation
+- Tests MUST fail initially (red phase)
+- Implementation makes tests pass (green phase)
+- Code may then be refactored while keeping tests green
+- No production code may be committed without corresponding tests
+- Test coverage below 80% for new code is considered a blocking failure
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+**Rationale**: Ad bidding involves real-time financial transactions where bugs directly cost money. Test-first development ensures correctness by design, provides living documentation of expected behavior, and enables confident refactoring of performance-critical auction algorithms.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+### III. Performance & Observability
+
+Systems MUST be designed for low-latency operation with comprehensive monitoring.
+
+**Rules**:
+- All services MUST expose health check endpoints
+- All request paths MUST emit structured logs with correlation IDs
+- Bid processing MUST complete within SLA (target: p95 < 100ms)
+- Services MUST expose metrics for latency, throughput, error rates
+- Database queries MUST be profiled and optimized before production
+- Alert thresholds MUST be defined for all critical paths
+
+**Rationale**: Ad auctions operate in real-time with strict latency budgets. Observability is non-negotiable because debugging production issues without traces/metrics leads to revenue loss. Performance requirements drive architectural decisions (caching strategies, database choices, queueing).
+
+## Development Standards
+
+### API Contracts
+
+- All service APIs MUST be contract-tested
+- Breaking changes require MAJOR version bump
+- Backward compatibility MUST be maintained for one version cycle
+- API documentation MUST be auto-generated from code (OpenAPI, gRPC reflection)
+
+### Data Management
+
+- Database migrations MUST be versioned and reversible
+- Production data access requires explicit approval and audit logging
+- Personally Identifiable Information (PII) MUST NOT be logged
+- Data retention policies MUST be enforced at the service level
+
+### Security
+
+- All external APIs MUST use authentication (API keys, OAuth2)
+- Secrets MUST be stored in secure vaults, never in code
+- Dependency vulnerabilities MUST be addressed within 7 days of disclosure
+- Rate limiting MUST be applied to all public endpoints
+
+## Quality Gates
+
+Before any code can be merged to main:
+
+1. **Tests Pass**: All automated tests (unit, integration, contract) must pass
+2. **Performance Check**: No regression in p95 latency for affected services
+3. **Security Scan**: No new high/critical vulnerabilities introduced
+4. **Code Review**: At least one approval from service owner
+5. **Contract Validation**: If API changes, downstream consumers notified
+
+Before any service can be deployed to production:
+
+1. **Load Testing**: Service must handle 2x expected peak traffic
+2. **Monitoring Setup**: Dashboards and alerts configured
+3. **Rollback Plan**: Documented and tested rollback procedure
+4. **Documentation**: README, API docs, runbooks updated
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+### Amendment Process
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+1. Proposed changes MUST be documented in a pull request
+2. Proposal MUST include rationale and migration plan if breaking
+3. Requires approval from at least 2 service owners
+4. Constitution version MUST be bumped per semantic versioning:
+   - **MAJOR**: Removing or fundamentally changing a principle
+   - **MINOR**: Adding a new principle or expanding requirements
+   - **PATCH**: Clarifications, typo fixes, non-semantic updates
+
+### Compliance
+
+- All code reviews MUST verify compliance with Core Principles
+- Violations require explicit justification documented in pull request
+- Repeated violations trigger architecture review
+- Constitution supersedes all other coding standards or conventions
+
+### Versioning Policy
+
+- Constitution follows semantic versioning (MAJOR.MINOR.PATCH)
+- Version increments require updating this header section
+- All dependent templates must be reviewed for consistency on MAJOR/MINOR bumps
+
+**Version**: 1.0.0 | **Ratified**: 2025-12-27 | **Last Amended**: 2025-12-27

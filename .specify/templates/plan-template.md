@@ -31,7 +31,29 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+Verify compliance with `.specify/memory/constitution.md`:
+
+### I. Service-Oriented Architecture ✓/✗
+- [ ] Service has well-defined API contract (OpenAPI/gRPC schema)
+- [ ] Service can be deployed independently
+- [ ] Service boundaries align with business capability (not technical layer)
+- [ ] Cross-service dependencies are explicit and versioned
+- [ ] Communication protocols documented (REST/gRPC/messaging)
+
+### II. Test-First Development ✓/✗
+- [ ] Test plan includes contract tests for all APIs
+- [ ] Test plan includes integration tests for service interactions
+- [ ] TDD workflow enforced (red → green → refactor)
+- [ ] Target: 80%+ test coverage for new code
+
+### III. Performance & Observability ✓/✗
+- [ ] Health check endpoint planned
+- [ ] Structured logging with correlation IDs planned
+- [ ] Metrics endpoints planned (latency, throughput, errors)
+- [ ] Performance SLA defined (target: p95 < 100ms for bid processing)
+- [ ] Alert thresholds defined for critical paths
+
+**Violations**: If any checks fail, document justification in Complexity Tracking section below.
 
 ## Project Structure
 
