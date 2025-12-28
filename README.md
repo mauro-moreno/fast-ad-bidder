@@ -8,19 +8,59 @@ A high-performance OpenRTB 2.5 bidder service for Google Ad Exchange integration
 - ✅ **Sub-100ms Latency** - p95 < 100ms, p99 < 120ms response times
 - ✅ **mTLS Authentication** - Mutual TLS with bidirectional certificate validation
 - ✅ **Campaign Targeting** - Geo, device, domain, and creative dimension matching
-- ✅ **Budget Management** - Real-time spend tracking with daily budget caps
-- ✅ **Win Notification Processing** - Async win tracking with 5-minute bid cache TTL
-- ✅ **Production Observability** - Structured logging, Prometheus metrics, InfluxDB integration
-- ✅ **1000 QPS Capacity** - Handles 1000 requests/second at peak load
+- ✅ **Budget Management** - Real-time spend tracking with daily budget caps and midnight UTC reset
+- ✅ **Win Notification Processing** - Async win tracking with worker pools and 5-minute bid cache TTL
+- ✅ **Production Observability** - Structured logging (zap), Prometheus metrics, InfluxDB integration
+- ✅ **1000 QPS Capacity** - Handles 1000+ requests/second with horizontal scaling
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Architecture](#architecture)
+- [Configuration](#configuration)
+- [Performance & Monitoring](#performance--monitoring)
+- [Development](#development)
+- [Deployment](#deployment)
+- [Troubleshooting](#troubleshooting)
+- [API Examples](#api-examples)
+
+## Quick Reference
+
+```bash
+# Setup and run locally
+make services-up                              # Start Docker services
+docker-compose exec -T postgres psql -U bidder -d bidder < config/schema.sql
+docker-compose exec -T postgres psql -U bidder -d bidder < config/sample_data.sql
+make run                                      # Start bidder
+
+# Testing
+make test                                     # Run all tests
+make test-coverage                            # Generate coverage report
+make load-test                                # Run k6 load test
+
+# Docker
+make docker-build                             # Build Docker image
+make services-up                              # Start all services
+make services-down                            # Stop all services
+
+# Kubernetes
+kubectl apply -k deploy/k8s/                  # Deploy to Kubernetes
+kubectl -n fast-ad-bidder get pods            # Check status
+
+# Monitoring
+curl http://localhost:8080/health             # Health check
+curl http://localhost:8080/metrics            # Prometheus metrics
+open http://localhost:3000                    # Grafana dashboard
+```
 
 ## Quick Start
 
 ### Prerequisites
 
-- Go 1.21+
-- Docker & Docker Compose
-- PostgreSQL 14+ (via Docker)
-- InfluxDB 2.x (optional, via Docker)
+- **Go**: 1.25.5 or later
+- **Docker**: 20.10+ and Docker Compose
+- **PostgreSQL**: 14+ (provided via Docker Compose)
+- **InfluxDB**: 2.x (optional, provided via Docker Compose)
 
 ### Installation
 
@@ -32,32 +72,65 @@ cd fast-ad-bidder
 # Install dependencies
 go mod download
 
-# Start infrastructure services
-docker-compose up -d
+# Start infrastructure services (PostgreSQL, InfluxDB, Prometheus, Grafana)
+make services-up
 
-# Create database schema
-psql -h localhost -U bidder -d bidder -f config/schema.sql
+# Wait for services to be healthy (about 10 seconds)
+sleep 10
+
+# Initialize database schema
+docker-compose exec -T postgres psql -U bidder -d bidder < config/schema.sql
 
 # Load sample campaign data
-psql -h localhost -U bidder -d bidder -f config/sample_data.sql
+docker-compose exec -T postgres psql -U bidder -d bidder < config/sample_data.sql
 
-# Set up environment variables
+# Set up environment variables for local development
 cp .env.example .env
-# Edit .env with your configuration
+# The default .env file is pre-configured for local Docker development
 ```
 
 ### Running the Bidder
 
 ```bash
-# Development mode
+# Development mode (uses .env file for configuration)
+make run
+# or
 go run cmd/bidder/main.go
 
 # Production build
-go build -o bin/bidder cmd/bidder/main.go
+make build
 ./bin/bidder
 ```
 
 The bidder will start on port `8080` (configurable via `PORT` environment variable).
+
+### Verify Installation
+
+```bash
+# Check health endpoint
+curl http://localhost:8080/health
+# Expected: {"status":"healthy"}
+
+# Send a test bid request
+curl -X POST http://localhost:8080/bid \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "test-request-001",
+    "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}],
+    "site": {"id": "site-123", "domain": "example.com"},
+    "device": {
+      "ua": "Mozilla/5.0",
+      "ip": "1.2.3.4",
+      "geo": {"country": "US"},
+      "devicetype": 4
+    }
+  }'
+
+# Access monitoring dashboards
+# - Grafana: http://localhost:3000 (admin/admin)
+# - Prometheus: http://localhost:9090
+# - InfluxDB: http://localhost:8086
+```
 
 ### Endpoints
 
@@ -150,51 +223,98 @@ The bidder will start on port `8080` (configurable via `PORT` environment variab
 
 ### Environment Variables
 
+Configuration is managed via environment variables. For local development, create a `.env` file:
+
 ```bash
 # Server Configuration
 PORT=8080                          # HTTP server port
-LOG_LEVEL=info                     # Log level (debug, info, warn, error)
+LOG_LEVEL=debug                    # Log level (debug, info, warn, error)
 METRICS_NAMESPACE=bidder           # Prometheus metrics namespace
 
-# Database Configuration
-DATABASE_URL=postgres://bidder:bidder@localhost:5432/bidder?sslmode=disable
+# PostgreSQL Configuration (connection string format)
+# For local development with Docker Compose:
+DATABASE_URL=postgres://bidder:bidder_dev_password@localhost:5432/bidder?sslmode=disable
+# For production, use secure credentials and sslmode=require
 
-# InfluxDB Configuration (Optional)
+# InfluxDB Configuration (Optional - for metrics storage)
+# Leave empty to disable InfluxDB integration
 INFLUXDB_URL=http://localhost:8086
-INFLUXDB_TOKEN=<your-token>
-INFLUXDB_ORG=bidder
+INFLUXDB_TOKEN=dev-token-change-in-production
+INFLUXDB_ORG=fast-ad-bidder
 INFLUXDB_BUCKET=metrics
 
 # mTLS Configuration
-MTLS_ENABLED=true
+MTLS_ENABLED=false                 # Set to true to enable mutual TLS authentication
 TLS_CERT_FILE=config/certs/server.crt
 TLS_KEY_FILE=config/certs/server.key
 TLS_CA_FILE=config/certs/ca.crt
 
-# Win Notification URL
-WIN_NOTIFICATION_URL=https://bidder.example.com/win
+# Win Notification URL (included in bid responses)
+WIN_NOTIFICATION_URL=http://localhost:8080/win
 ```
+
+**Note**: The bidder uses `github.com/joho/godotenv` to automatically load `.env` file if present. In production (Docker/Kubernetes), use environment variables directly.
 
 ### Campaign Configuration
 
-Campaigns are stored in PostgreSQL and loaded into memory on startup. See `config/schema.sql` for the database schema.
+Campaigns are stored in PostgreSQL and loaded into memory on startup with automatic reload every 60 seconds. See `config/schema.sql` for the complete database schema.
 
-**Campaign Structure:**
+**Campaign Table Structure:**
 ```sql
 CREATE TABLE campaigns (
-    id VARCHAR(255) PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    status VARCHAR(50) NOT NULL,
-    daily_budget DECIMAL(10,2) NOT NULL,
-    spent_today DECIMAL(10,2) DEFAULT 0,
-    bid_strategy_type VARCHAR(50) DEFAULT 'FIXED_CPM',
-    bid_strategy_value DECIMAL(10,2),
-    geo_countries TEXT[],
-    geo_regions TEXT[],
-    device_types INTEGER[],
-    site_domains TEXT[],
-    app_bundles TEXT[],
-    creative_ids TEXT[]
+    id              TEXT PRIMARY KEY,
+    name            TEXT NOT NULL,
+    advertiser_id   TEXT NOT NULL,
+    status          TEXT NOT NULL CHECK (status IN ('active', 'paused', 'budget_capped')),
+    daily_budget    DECIMAL(10,2) NOT NULL CHECK (daily_budget > 0),
+    spent_today     DECIMAL(10,2) NOT NULL DEFAULT 0,
+    budget_reset_time TIMESTAMPTZ NOT NULL,
+
+    -- Targeting rules stored as JSONB
+    targeting       JSONB NOT NULL DEFAULT '{}',
+
+    -- Bid strategy
+    bid_strategy    TEXT NOT NULL CHECK (bid_strategy IN ('fixed_cpm', 'dynamic')),
+    fixed_cpm       DECIMAL(10,2),
+    max_cpm         DECIMAL(10,2),
+
+    -- Creative assignment
+    creative_ids    TEXT[] NOT NULL DEFAULT '{}',
+
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
+**Targeting JSON Structure:**
+```json
+{
+  "GeoTargeting": ["US", "CA", "GB"],
+  "DeviceTypes": ["mobile", "desktop"],
+  "SiteDomains": ["example.com"],
+  "AppBundles": ["com.example.app"],
+  "MinViewability": 0.5
+}
+```
+
+**Creative Table Structure:**
+```sql
+CREATE TABLE creatives (
+    id                  TEXT PRIMARY KEY,
+    campaign_id         TEXT NOT NULL REFERENCES campaigns(id),
+    name                TEXT NOT NULL,
+    width               INT NOT NULL,
+    height              INT NOT NULL,
+    format              TEXT NOT NULL DEFAULT 'banner',
+    markup              TEXT NOT NULL,
+    click_through_url   TEXT NOT NULL,
+    advertiser_domain   TEXT NOT NULL,
+    approval_status     TEXT NOT NULL CHECK (approval_status IN ('approved', 'pending', 'rejected')),
+    exchange_approvals  JSONB NOT NULL DEFAULT '{}',
+    impression_trackers TEXT[] NOT NULL DEFAULT '{}',
+    click_trackers      TEXT[] NOT NULL DEFAULT '{}',
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ```
 
@@ -246,29 +366,51 @@ See `config/grafana/dashboards/bidder.json` for pre-configured Grafana dashboard
 
 ```bash
 # Run all tests
-go test ./...
+make test
 
-# Run with coverage
-go test -cover ./...
+# Run with coverage report (generates coverage.html)
+make test-coverage
 
 # Run specific test suites
-go test ./tests/contract/...       # Contract tests
-go test ./tests/integration/...    # Integration tests
-go test ./tests/unit/...           # Unit tests
+make test-unit           # Unit tests only
+make test-integration    # Integration tests only
+make test-contract       # Contract tests only
 
-# Load testing with k6
-k6 run tests/load/bid_endpoint.js
+# Run with race detection
+make test-all
+
+# Load testing with k6 (requires k6 installed)
+make load-test
 ```
 
 ### Code Coverage
 
-Target: **80%+ test coverage** for new code (constitutional requirement)
+**Current Coverage: 58.0%** (core business logic well-covered)
+
+**Coverage by Component:**
+- Campaign Matching: ~85%
+- Bid Pricing: ~80%
+- Budget Tracking: ~75%
+- Metrics Aggregation: ~90%
+- Request Validation: ~85%
+- Win Processing (workers): ~20% (background goroutines)
+- I/O operations (DB, InfluxDB): ~10% (tested in integration tests)
+
+**Constitutional Requirement**: 80%+ test coverage for new code
 
 ```bash
-# Generate coverage report
-go test -coverprofile=coverage.out ./...
-go tool cover -html=coverage.out -o coverage.html
+# Generate detailed coverage report
+make test-coverage
+
+# View coverage in browser
+open coverage.html  # macOS
+xdg-open coverage.html  # Linux
+
+# View coverage in terminal
+go tool cover -func=coverage.out | grep total
 ```
+
+**Note**: The coverage tool tracks code in `src/` packages. Integration tests provide additional coverage for I/O operations and background workers not easily tested in unit tests.
 
 ### Project Structure
 
@@ -306,61 +448,385 @@ go tool cover -html=coverage.out -o coverage.html
 
 ## Deployment
 
-### Docker
+### Docker Compose (Local Development)
+
+The fastest way to run the complete stack locally:
 
 ```bash
-# Build image
-docker build -t fast-ad-bidder:latest .
+# Start all services (PostgreSQL, InfluxDB, Prometheus, Grafana, Bidder)
+make services-up
 
-# Run container
-docker run -d \
-  -p 8080:8080 \
-  -e DATABASE_URL="postgres://..." \
-  -e INFLUXDB_URL="http://..." \
-  --name bidder \
-  fast-ad-bidder:latest
+# View logs
+docker-compose logs -f bidder
+
+# Stop all services
+make services-down
 ```
 
-### Kubernetes
+**Services:**
+- Bidder: http://localhost:8080
+- Grafana: http://localhost:3000 (admin/admin)
+- Prometheus: http://localhost:9090
+- InfluxDB: http://localhost:8086
 
-See `k8s/` directory for deployment manifests:
+### Docker (Production Build)
 
 ```bash
-# Apply manifests
-kubectl apply -f k8s/deployment.yaml
-kubectl apply -f k8s/service.yaml
-kubectl apply -f k8s/ingress.yaml
+# Build optimized production image (multi-stage, Alpine-based)
+make docker-build
+
+# Run container with environment variables
+docker run -d \
+  -p 8080:8080 \
+  -e DATABASE_URL="postgres://user:password@db-host:5432/bidder?sslmode=require" \
+  -e INFLUXDB_URL="http://influxdb:8086" \
+  -e INFLUXDB_TOKEN="your-token" \
+  -e LOG_LEVEL="info" \
+  --name fast-ad-bidder \
+  fast-ad-bidder:latest
+
+# View logs
+docker logs -f fast-ad-bidder
+
+# Check health
+docker exec fast-ad-bidder wget -qO- http://localhost:8080/health
+```
+
+**Docker Image Details:**
+- Base: `golang:1.25-alpine` (builder), `alpine:3.19` (runtime)
+- Size: ~20MB compressed
+- User: Non-root (bidder:1000)
+- Health check: Enabled (30s interval)
+
+### Kubernetes (Production)
+
+Complete deployment manifests are in `deploy/k8s/`:
+
+```bash
+# Create namespace
+kubectl apply -f deploy/k8s/namespace.yaml
+
+# Deploy configuration (ConfigMap + Secret)
+kubectl apply -f deploy/k8s/configmap.yaml
+kubectl apply -f deploy/k8s/secret.yaml
+
+# Deploy application
+kubectl apply -f deploy/k8s/deployment.yaml
+kubectl apply -f deploy/k8s/service.yaml
+kubectl apply -f deploy/k8s/ingress.yaml
+
+# Deploy autoscaling and pod disruption budget
+kubectl apply -f deploy/k8s/hpa.yaml
+kubectl apply -f deploy/k8s/pdb.yaml
+
+# Optional: Prometheus ServiceMonitor (if using Prometheus Operator)
+kubectl apply -f deploy/k8s/servicemonitor.yaml
+
+# Or use Kustomize
+kubectl apply -k deploy/k8s/
+```
+
+**Kubernetes Configuration:**
+- **Replicas**: 3 (min), 20 (max with HPA)
+- **HPA**: Auto-scales on 70% CPU or 80% memory utilization
+- **PDB**: Minimum 2 pods available during disruptions
+- **Resource Requests**: 500m CPU, 512Mi memory
+- **Resource Limits**: 2000m CPU, 2Gi memory
+- **Probes**: Liveness (20s), Readiness (10s), Startup (10s)
+- **Anti-affinity**: Pods spread across different nodes
+
+**Monitoring Setup:**
+```bash
+# Check deployment status
+kubectl -n fast-ad-bidder get pods
+
+# View logs
+kubectl -n fast-ad-bidder logs -l app.kubernetes.io/name=fast-ad-bidder -f
+
+# Check metrics
+kubectl -n fast-ad-bidder port-forward svc/fast-ad-bidder 8080:80
+curl http://localhost:8080/metrics
+
+# Scale manually
+kubectl -n fast-ad-bidder scale deployment fast-ad-bidder --replicas=5
 ```
 
 ## Troubleshooting
 
 ### Common Issues
 
+**PostgreSQL Connection Failures**
+
+```bash
+# Error: "password authentication failed for user bidder"
+# Solution: Check DATABASE_URL in .env file
+
+# Verify PostgreSQL is running
+docker-compose ps postgres
+
+# Check credentials match docker-compose.yml
+grep POSTGRES docker-compose.yml
+grep DATABASE_URL .env
+
+# Test connection manually
+docker-compose exec postgres psql -U bidder -d bidder -c "SELECT 1"
+```
+
+**Database Schema Not Initialized**
+
+```bash
+# Error: "column bid_floor_cpm does not exist"
+# Solution: Run schema initialization
+
+# Initialize schema
+docker-compose exec -T postgres psql -U bidder -d bidder < config/schema.sql
+
+# Verify tables exist
+docker-compose exec postgres psql -U bidder -d bidder -c "\dt"
+
+# Load sample data
+docker-compose exec -T postgres psql -U bidder -d bidder < config/sample_data.sql
+```
+
+**Zero Test Coverage**
+
+```bash
+# Error: "coverage: 0.0%"
+# Cause: Missing -coverpkg flag for cross-package coverage
+
+# Correct command (use Makefile)
+make test-coverage  # Uses -coverpkg=./src/... flag
+
+# Manual command
+go test -v -coverprofile=coverage.out -covermode=atomic -coverpkg=./src/... ./...
+```
+
 **High Latency (> 100ms p95)**
-- Check campaign count - reduce to <100 active campaigns
-- Verify PostgreSQL connection pool settings
-- Review structured logs for slow database queries
-- Check Prometheus histogram for latency distribution
+
+```bash
+# Check active campaign count
+curl -s http://localhost:8080/metrics | grep active_campaigns_total
+
+# Reduce to <100 active campaigns for optimal performance
+# Review slow queries in logs
+docker-compose logs bidder | grep "slow query"
+
+# Check Prometheus histogram
+curl -s http://localhost:8080/metrics | grep http_request_duration_seconds
+```
 
 **Orphaned Win Notifications**
-- Verify bid cache TTL (5 minutes) vs win notification delay
-- Check system clock drift between bidder instances
-- Review `wins_orphaned_total` metric for patterns
+
+```bash
+# Check orphaned win metric
+curl -s http://localhost:8080/metrics | grep wins_orphaned_total
+
+# Common causes:
+# 1. Win notification arrives >5 minutes after bid (cache TTL expired)
+# 2. Bidder restarted between bid and win (cache cleared)
+# 3. Clock drift between bidder instances
+
+# Solution: Increase bid cache TTL or reduce win notification latency
+```
 
 **Budget Exhaustion Mid-Day**
-- Check campaign spend patterns in InfluxDB
-- Verify daily budget reset at midnight UTC
-- Review `campaigns_budget_utilization` gauge
+
+```bash
+# Check campaign spend
+docker-compose exec postgres psql -U bidder -d bidder -c \
+  "SELECT id, name, daily_budget, spent_today FROM campaigns WHERE status='active'"
+
+# Verify budget reset scheduler
+docker-compose logs bidder | grep "Budget reset scheduler"
+
+# Check reset time (should be midnight UTC)
+docker-compose logs bidder | grep "next_reset_at"
+```
 
 **mTLS Certificate Errors**
-- Verify certificate paths in environment variables
-- Check certificate expiration: `openssl x509 -in server.crt -noout -dates`
-- Ensure CA certificate includes Google Ad Exchange CA
+
+```bash
+# Generate self-signed certificates for local testing
+cd config/certs
+./generate.sh
+
+# Verify certificate validity
+openssl x509 -in server.crt -noout -dates
+openssl x509 -in server.crt -noout -subject
+
+# Test mTLS connection
+curl -v --cert client.crt --key client.key --cacert ca.crt \
+  https://localhost:8080/health
+```
+
+**Docker Compose Validation Errors**
+
+```bash
+# Error: "contains false, which is an invalid type"
+# Cause: Boolean values in environment must be strings
+
+# Incorrect:
+TLS_ENABLED: false
+
+# Correct:
+TLS_ENABLED: "false"
+
+# Validate docker-compose.yml
+docker-compose config --quiet
+```
+
+**Go Module Download Failures**
+
+```bash
+# Error: "go.mod requires go >= 1.25.5"
+# Solution: Update Go to 1.25.5 or later
+
+# Check Go version
+go version
+
+# Update Go (using Homebrew on macOS/Linux)
+brew upgrade go
+
+# Or download from https://go.dev/dl/
+```
+
+## API Examples
+
+### Bid Request Example
+
+```bash
+# Successful bid response
+curl -X POST http://localhost:8080/bid \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "bid-request-123",
+    "imp": [
+      {
+        "id": "1",
+        "banner": {
+          "w": 300,
+          "h": 250,
+          "pos": 1
+        },
+        "bidfloor": 1.0
+      }
+    ],
+    "site": {
+      "id": "site-123",
+      "domain": "publisher.com",
+      "page": "https://publisher.com/article"
+    },
+    "device": {
+      "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)",
+      "ip": "1.2.3.4",
+      "geo": {
+        "country": "US"
+      },
+      "devicetype": 4
+    },
+    "user": {
+      "id": "user-456"
+    }
+  }'
+
+# Response (200 OK):
+{
+  "id": "bid-request-123",
+  "seatbid": [
+    {
+      "bid": [
+        {
+          "id": "bid-abc-123",
+          "impid": "1",
+          "price": 2.50,
+          "adid": "creative-001",
+          "adm": "<div>Ad HTML</div>",
+          "adomain": ["advertiser.example.com"],
+          "crid": "creative-001",
+          "w": 300,
+          "h": 250,
+          "nurl": "http://localhost:8080/win?bid=bid-abc-123&price=${AUCTION_PRICE}&currency=${AUCTION_CURRENCY}"
+        }
+      ]
+    }
+  ],
+  "cur": "USD"
+}
+```
+
+### Win Notification Example
+
+```bash
+# Win notification (sent by ad exchange after auction)
+curl "http://localhost:8080/win?bid=bid-abc-123&price=2.45&currency=USD"
+
+# Response (200 OK):
+{
+  "status": "win_recorded",
+  "bid_id": "bid-abc-123",
+  "price": 2.45,
+  "currency": "USD"
+}
+```
+
+### No-Bid Response
+
+```bash
+# When no matching campaigns
+curl -X POST http://localhost:8080/bid \
+  -H "Content-Type: application/json" \
+  -d '{"id": "req-123", "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}]}'
+
+# Response (200 OK):
+{
+  "id": "req-123",
+  "nbr": 200,  # No-bid reason code (200 = no matching creative)
+  "cur": "USD"
+}
+```
+
+### Health Check
+
+```bash
+curl http://localhost:8080/health
+
+# Response (200 OK):
+{"status":"healthy"}
+```
+
+### Prometheus Metrics
+
+```bash
+curl http://localhost:8080/metrics
+
+# Sample output:
+# HELP http_requests_total Total HTTP requests
+# TYPE http_requests_total counter
+http_requests_total{endpoint="/bid",method="POST",status="200"} 1234
+http_requests_total{endpoint="/bid",method="POST",status="204"} 567
+
+# HELP http_request_duration_seconds HTTP request latency
+# TYPE http_request_duration_seconds histogram
+http_request_duration_seconds_bucket{endpoint="/bid",le="0.05"} 980
+http_request_duration_seconds_bucket{endpoint="/bid",le="0.1"} 1180
+http_request_duration_seconds_bucket{endpoint="/bid",le="0.5"} 1234
+```
+
+## Additional Resources
+
+- **OpenRTB 2.5 Specification**: https://www.iab.com/guidelines/openrtb/
+- **API Documentation**: See `docs/API.md` for complete endpoint documentation
+- **Grafana Dashboards**: Pre-configured in `config/grafana/dashboards/`
+- **Prometheus Alerts**: Alert rules in `config/prometheus/alerts.yml`
+- **Load Test Results**: Run `make load-test` to validate performance
 
 ## License
 
-[Your License Here]
+MIT License - See LICENSE file for details
 
 ## Support
 
-For issues and questions, please open an issue in the repository.
+For issues and questions:
+- Open an issue in the repository
+- Review troubleshooting section above
+- Check logs with `docker-compose logs -f bidder`

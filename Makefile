@@ -6,7 +6,7 @@ all: test build
 # Run all tests with coverage
 test-coverage:
 	@echo "Running tests with coverage..."
-	@go test -v -coverprofile=coverage.out -covermode=atomic ./...
+	@go test -v -coverprofile=coverage.out -covermode=atomic -coverpkg=./src/... ./...
 	@go tool cover -html=coverage.out -o coverage.html
 	@go tool cover -func=coverage.out | grep total
 	@echo "Coverage report generated: coverage.html"
