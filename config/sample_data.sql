@@ -12,7 +12,7 @@ INSERT INTO campaigns (
     100.00,
     0.00,
     NOW() + INTERVAL '1 day',
-    '{"GeoTargeting": ["US"], "DeviceTypes": ["mobile"], "SiteDomains": [], "AppBundles": [], "MinViewability": 0.0}'::jsonb,
+    '{"geo": ["US"], "device_types": [4, 5], "domains": [], "app_bundles": []}'::jsonb,
     'fixed_cpm',
     2.50,
     ARRAY['creative-001', 'creative-002']
@@ -30,7 +30,7 @@ INSERT INTO campaigns (
     200.00,
     0.00,
     NOW() + INTERVAL '1 day',
-    '{"GeoTargeting": ["US", "CA", "GB"], "DeviceTypes": ["desktop"], "SiteDomains": [], "AppBundles": [], "MinViewability": 0.5}'::jsonb,
+    '{"geo": ["US", "CA", "GB"], "device_types": [2], "domains": [], "app_bundles": []}'::jsonb,
     'fixed_cpm',
     3.00,
     ARRAY['creative-003']
@@ -48,7 +48,7 @@ INSERT INTO campaigns (
     50.00,
     0.00,
     NOW() + INTERVAL '1 day',
-    '{"GeoTargeting": ["US"], "DeviceTypes": ["mobile", "desktop"], "SiteDomains": [], "AppBundles": [], "MinViewability": 0.0}'::jsonb,
+    '{"geo": ["US"], "device_types": [2, 4, 5], "domains": [], "app_bundles": []}'::jsonb,
     'fixed_cpm',
     1.50,
     ARRAY['creative-004']

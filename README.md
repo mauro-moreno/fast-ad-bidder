@@ -38,6 +38,10 @@ make test                                     # Run all tests
 make test-coverage                            # Generate coverage report
 make load-test                                # Run k6 load test
 
+# Get a demo ad response (300x250 mobile banner)
+curl -X POST http://localhost:8080/bid -H "Content-Type: application/json" \
+  -d '{"id":"test","imp":[{"id":"1","banner":{"w":300,"h":250}}],"site":{"domain":"example.com"},"device":{"geo":{"country":"US"},"devicetype":4}}'
+
 # Docker
 make docker-build                             # Build Docker image
 make services-up                              # Start all services
@@ -130,6 +134,91 @@ curl -X POST http://localhost:8080/bid \
 # - Grafana: http://localhost:3000 (admin/admin)
 # - Prometheus: http://localhost:9090
 # - InfluxDB: http://localhost:8086
+```
+
+### Getting a Real Ad Response
+
+The sample data includes demo ads. To get a successful bid response:
+
+```bash
+# Request a mobile banner ad (300x250) from US
+curl -X POST http://localhost:8080/bid \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "test-mobile-001",
+    "imp": [
+      {
+        "id": "1",
+        "banner": {
+          "w": 300,
+          "h": 250,
+          "pos": 1
+        }
+      }
+    ],
+    "site": {
+      "id": "site-001",
+      "domain": "example.com"
+    },
+    "device": {
+      "ua": "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X)",
+      "ip": "1.2.3.4",
+      "geo": {
+        "country": "US"
+      },
+      "devicetype": 4
+    }
+  }' | jq .
+```
+
+**Expected Response:**
+```json
+{
+  "id": "test-mobile-001",
+  "seatbid": [
+    {
+      "bid": [
+        {
+          "id": "bid-...",
+          "impid": "1",
+          "price": 2.50,
+          "adm": "<div style=\"width:300px;height:250px;background:#4285f4;display:flex;align-items:center;justify-content:center;color:white;font-size:24px;\">Sample Ad</div>",
+          "adomain": ["advertiser.example.com"],
+          "crid": "creative-001",
+          "w": 300,
+          "h": 250
+        }
+      ]
+    }
+  ],
+  "cur": "USD"
+}
+```
+
+**Desktop Banner (728x90):**
+```bash
+curl -X POST http://localhost:8080/bid \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "test-desktop-001",
+    "imp": [{"id": "1", "banner": {"w": 728, "h": 90}}],
+    "site": {"domain": "example.com"},
+    "device": {
+      "ua": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+      "ip": "1.2.3.4",
+      "geo": {"country": "US"},
+      "devicetype": 2
+    }
+  }' | jq .
+```
+
+**No-Bid Response** (when no campaigns match):
+```json
+{
+  "id": "test-request-001",
+  "nbr": 200,
+  "cur": "USD"
+}
 ```
 
 ### Endpoints
@@ -287,14 +376,41 @@ CREATE TABLE campaigns (
 ```
 
 **Targeting JSON Structure:**
+
+The targeting JSON uses snake_case keys and specific formats:
+
 ```json
 {
-  "GeoTargeting": ["US", "CA", "GB"],
-  "DeviceTypes": ["mobile", "desktop"],
-  "SiteDomains": ["example.com"],
-  "AppBundles": ["com.example.app"],
-  "MinViewability": 0.5
+  "geo": {
+    "countries": ["US", "CA", "GB"],
+    "regions": ["CA-ON", "NY"]
+  },
+  "device_types": [2, 4, 5],
+  "domains": [],
+  "app_bundles": []
 }
+```
+
+**OpenRTB Device Type Codes:**
+- `1` - Mobile/Tablet (general)
+- `2` - Personal Computer (desktop)
+- `3` - Connected TV
+- `4` - Phone
+- `5` - Tablet
+- `6` - Connected Device
+- `7` - Set Top Box
+
+**Example Targeting Scenarios:**
+
+```sql
+-- Target US mobile users (phones and tablets)
+targeting = '{"geo": {"countries": ["US"], "regions": []}, "device_types": [4, 5], "domains": [], "app_bundles": []}'::jsonb
+
+-- Target desktop users in US, Canada, UK
+targeting = '{"geo": {"countries": ["US", "CA", "GB"], "regions": []}, "device_types": [2], "domains": [], "app_bundles": []}'::jsonb
+
+-- Target specific domains (whitelist)
+targeting = '{"geo": {"countries": ["US"], "regions": []}, "device_types": [2, 4, 5], "domains": {"whitelist": ["nytimes.com", "wsj.com"]}, "app_bundles": []}'::jsonb
 ```
 
 **Creative Table Structure:**
@@ -688,6 +804,77 @@ go version
 brew upgrade go
 
 # Or download from https://go.dev/dl/
+```
+
+**Getting No-Bid Responses (nbr: 200)**
+
+```bash
+# Problem: Bidder returns no-bid for all requests
+# Common causes:
+
+# 1. Incorrect targeting format in database
+# Check current targeting format
+docker-compose exec postgres psql -U bidder -d bidder -c \
+  "SELECT id, targeting FROM campaigns WHERE status='active' LIMIT 1;"
+
+# 2. Fix targeting format (if needed)
+docker-compose exec -T postgres psql -U bidder -d bidder << 'EOF'
+UPDATE campaigns SET targeting = '{
+  "geo": {"countries": ["US"], "regions": []},
+  "device_types": [4, 5],
+  "domains": [],
+  "app_bundles": []
+}'::jsonb WHERE id = 'campaign-001';
+EOF
+
+# 3. Restart bidder to reload campaigns
+pkill -f "go run cmd/bidder/main.go"
+make run &
+
+# 4. Wait for campaigns to reload (60 second interval)
+sleep 65
+
+# 5. Test with correct device type codes
+# Phone (4), Tablet (5), Desktop/PC (2)
+curl -X POST http://localhost:8080/bid \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "test",
+    "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}],
+    "site": {"domain": "example.com"},
+    "device": {
+      "geo": {"country": "US"},
+      "devicetype": 4
+    }
+  }'
+
+# 6. Check metrics for active campaigns
+curl -s http://localhost:8080/metrics | grep active_campaigns_total
+# Should show: active_campaigns_total 2 (or more)
+```
+
+**Targeting Format Requirements**
+
+The bidder expects specific JSON formats for targeting:
+
+```json
+// ❌ WRONG - Will not match
+{
+  "GeoTargeting": ["US"],           // PascalCase keys
+  "DeviceTypes": ["mobile"],        // String device types
+  "geo": ["US"]                     // Array instead of object
+}
+
+// ✅ CORRECT - Will match
+{
+  "geo": {                          // Object with countries/regions
+    "countries": ["US"],
+    "regions": []
+  },
+  "device_types": [4, 5],           // snake_case, numeric codes
+  "domains": [],                    // Empty arrays for no targeting
+  "app_bundles": []
+}
 ```
 
 ## API Examples
