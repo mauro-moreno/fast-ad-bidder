@@ -1,0 +1,39 @@
+# T112: Kustomize configuration for bidder deployment
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: fast-ad-bidder
+
+# Common labels applied to all resources
+commonLabels:
+  app.kubernetes.io/name: fast-ad-bidder
+  app.kubernetes.io/managed-by: kustomize
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - secret.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+  - hpa.yaml
+  - pdb.yaml
+  - servicemonitor.yaml
+
+# Image configuration
+images:
+  - name: fast-ad-bidder
+    newName: your-registry.io/fast-ad-bidder
+    newTag: latest
+
+# ConfigMap generator (alternative to configmap.yaml)
+# configMapGenerator:
+#   - name: bidder-config
+#     envs:
+#       - config.env
+
+# Secret generator (alternative to secret.yaml)
+# secretGenerator:
+#   - name: bidder-secrets
+#     envs:
+#       - secrets.env

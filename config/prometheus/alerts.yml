@@ -1,30 +1,94 @@
 groups:
-  - name: bidder_alerts
+  - name: bidder_latency_alerts
     interval: 30s
     rules:
-      - alert: HighLatency
-        expr: histogram_quantile(0.95, rate(bidder_latency_seconds_bucket[5m])) > 0.1
+      - alert: BidLatencyP95High
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{endpoint="/bid"}[5m])) > 0.1
+        for: 2m
+        labels:
+          severity: warning
+          component: bidder
+          sla: p95_latency
+        annotations:
+          summary: "Bid response p95 latency exceeds 100ms SLA"
+          description: "P95 latency is {{ $value | humanizeDuration }} (threshold: 100ms). Check campaign count, database performance, and matcher complexity."
+
+      - alert: BidLatencyP99High
+        expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{endpoint="/bid"}[5m])) > 0.12
+        for: 2m
+        labels:
+          severity: warning
+          component: bidder
+          sla: p99_latency
+        annotations:
+          summary: "Bid response p99 latency exceeds 120ms SLA"
+          description: "P99 latency is {{ $value | humanizeDuration }} (threshold: 120ms). This may indicate occasional slow database queries or GC pauses."
+
+  - name: bidder_error_alerts
+    interval: 30s
+    rules:
+      - alert: HighErrorRate
+        expr: (rate(http_requests_total{endpoint="/bid",status=~"4..|5.."}[5m]) / rate(http_requests_total{endpoint="/bid"}[5m])) > 0.01
+        for: 2m
+        labels:
+          severity: warning
+          component: bidder
+        annotations:
+          summary: "Bid endpoint error rate above 1%"
+          description: "Error rate is {{ $value | humanizePercentage }}. Check logs for validation failures or database errors."
+
+      - alert: NoTrafficReceived
+        expr: rate(http_requests_total{endpoint="/bid"}[5m]) == 0
         for: 5m
         labels:
           severity: warning
+          component: bidder
         annotations:
-          summary: "Bidder p95 latency exceeds 100ms"
-          description: "p95 latency is {{ $value }}s (threshold: 0.1s)"
+          summary: "No bid requests received for 5 minutes"
+          description: "Bidder has not received any requests. Check upstream load balancer or mTLS certificate validity."
 
-      - alert: HighErrorRate
-        expr: rate(bidder_errors_total[5m]) > 0.01
+  - name: bidder_budget_alerts
+    interval: 30s
+    rules:
+      - alert: NoBudgetRemaining
+        expr: campaigns_budget_remaining == 0
         for: 5m
         labels:
-          severity: critical
+          severity: warning
+          component: bidder
         annotations:
-          summary: "Bidder error rate exceeds 1%"
-          description: "Error rate is {{ $value }} (threshold: 0.01)"
+          summary: "All campaign budgets exhausted"
+          description: "No remaining budget. All bid requests will return no-bid. Verify budget reset at midnight UTC."
 
-      - alert: BidderDown
-        expr: up{job="bidder"} == 0
-        for: 1m
+      - alert: LowActiveCampaigns
+        expr: active_campaigns_total < 1
+        for: 5m
+        labels:
+          severity: warning
+          component: bidder
+        annotations:
+          summary: "Less than 1 active campaign with budget"
+          description: "Only {{ $value }} active campaigns available. This will result in high no-bid rates."
+
+  - name: bidder_win_tracking_alerts
+    interval: 30s
+    rules:
+      - alert: HighOrphanedWinRate
+        expr: (rate(wins_orphaned_total[5m]) / rate(wins_received_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          component: bidder
+        annotations:
+          summary: "Orphaned win rate above 10%"
+          description: "{{ $value | humanizePercentage }} of wins are orphaned. Check bid cache TTL or system clock drift."
+
+      - alert: WinQueueOverflow
+        expr: rate(wins_dropped_total[5m]) > 0
+        for: 2m
         labels:
           severity: critical
+          component: bidder
         annotations:
-          summary: "Bidder service is down"
-          description: "Bidder has been down for more than 1 minute"
+          summary: "Win notification queue overflowing"
+          description: "Win processor queue is full, dropping notifications. Increase worker count or queue size."

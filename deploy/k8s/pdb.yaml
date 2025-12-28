@@ -1,0 +1,19 @@
+# T112: PodDisruptionBudget for high availability
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: bidder-pdb
+  namespace: fast-ad-bidder
+  labels:
+    app.kubernetes.io/name: fast-ad-bidder
+    app.kubernetes.io/component: availability
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fast-ad-bidder
+      app.kubernetes.io/component: bidder
+  
+  # Prevent more than 1 pod disruption at a time
+  # This ensures 2 pods are always running during voluntary disruptions
+  unhealthyPodEvictionPolicy: IfHealthyBudget

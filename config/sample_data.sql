@@ -134,6 +134,6 @@ INSERT INTO creatives (
     'advertiser.example.com',
     'pending',
     '{}'::jsonb,
-    ARRAY[],
-    ARRAY[]
+    ARRAY[]::text[],
+    ARRAY[]::text[]
 );

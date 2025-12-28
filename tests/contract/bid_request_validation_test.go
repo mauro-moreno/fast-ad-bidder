@@ -2,15 +2,21 @@ package contract
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/fast-ad-bidder/bidder/src/api"
 	"github.com/fast-ad-bidder/bidder/src/lib"
 	"github.com/fast-ad-bidder/bidder/src/middleware"
+	"github.com/fast-ad-bidder/bidder/src/services/builder"
+	"github.com/fast-ad-bidder/bidder/src/services/matcher"
+	"github.com/fast-ad-bidder/bidder/src/services/store"
+	"github.com/fast-ad-bidder/bidder/src/services/tracker"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -18,7 +24,9 @@ import (
 )
 
 var (
-	testFixtures map[string]interface{}
+	testFixtures  map[string]interface{}
+	testCampaigns []*store.Campaign
+	testCreatives []*store.Creative
 )
 
 func init() {
@@ -31,6 +39,31 @@ func init() {
 	if err := json.Unmarshal(data, &testFixtures); err != nil {
 		panic("Failed to parse test fixtures: " + err.Error())
 	}
+
+	// Load test campaigns and creatives
+	campaignsData, err := os.ReadFile("../../tests/fixtures/campaigns.json")
+	if err != nil {
+		panic("Failed to load campaign fixtures: " + err.Error())
+	}
+
+	var fixtureData struct {
+		Campaigns []*store.Campaign `json:"campaigns"`
+		Creatives []*store.Creative `json:"creatives"`
+	}
+
+	if err := json.Unmarshal(campaignsData, &fixtureData); err != nil {
+		panic("Failed to parse campaign fixtures: " + err.Error())
+	}
+
+	testCampaigns = fixtureData.Campaigns
+	testCreatives = fixtureData.Creatives
+}
+
+// mockCampaignLoader loads campaigns from test fixtures
+type mockCampaignLoader struct{}
+
+func (m *mockCampaignLoader) LoadFromDB(ctx context.Context) ([]*store.Campaign, []*store.Creative, error) {
+	return testCampaigns, testCreatives, nil
 }
 
 var testServerOnce *echo.Echo
@@ -54,9 +87,38 @@ func setupTestServer() *echo.Echo {
 	e.Use(middleware.LoggingMiddleware(logger))
 	e.Use(middleware.MetricsMiddleware(metrics))
 
+	// Initialize test campaign store with mock loader
+	loader := &mockCampaignLoader{}
+	campaignStore := store.NewMemoryCampaignStore(loader)
+
+	// Load campaigns into memory
+	if err := campaignStore.LoadCampaigns(context.Background()); err != nil {
+		panic("Failed to load test campaigns: " + err.Error())
+	}
+
+	// Log loaded campaigns for debugging
+	logger.Info("Test campaigns loaded",
+		zap.Int("campaign_count", len(campaignStore.GetAllCampaigns())),
+	)
+
+	campaignMatcher := matcher.NewCampaignMatcher(campaignStore, logger)
+	responseBuilder := builder.NewResponseBuilder("https://test.example.com/win")
+
+	// Initialize tracker components for testing
+	bidCache := tracker.NewBidCache(5 * time.Minute)
+	metricsAgg := tracker.NewMetricsAggregator()
+	var influxWriter *tracker.InfluxWriter // nil for tests
+
 	// Add bid endpoint
-	bidHandler := api.NewBidHandler(nil, nil, logger, metrics)
+	bidHandler := api.NewBidHandler(campaignMatcher, responseBuilder, bidCache, metricsAgg, influxWriter, logger, metrics)
 	e.POST("/bid", bidHandler.HandleBid)
+
+	// Add win endpoint for win notification tests
+	parser := tracker.NewParser(logger)
+	budgetTracker := tracker.NewBudgetTracker(campaignStore, logger)
+	winProcessor := tracker.NewWinProcessor(bidCache, budgetTracker, metricsAgg, influxWriter, logger, 4, 10000)
+	winHandler := api.NewWinHandler(parser, winProcessor, bidCache, logger)
+	e.GET("/win", winHandler.HandleWin)
 
 	testServerOnce = e
 	return e

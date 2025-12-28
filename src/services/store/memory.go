@@ -4,6 +4,37 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+var (
+	// T099: Prometheus gauges for active campaigns and budget tracking
+	activeCampaignsGauge = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "active_campaigns_total",
+		Help: "Total number of active campaigns with available budget",
+	})
+
+	totalBudgetGauge = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "campaigns_budget_total",
+		Help: "Total daily budget across all active campaigns",
+	})
+
+	remainingBudgetGauge = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "campaigns_budget_remaining",
+		Help: "Total remaining budget across all active campaigns",
+	})
+
+	spentBudgetGauge = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "campaigns_budget_spent",
+		Help: "Total spent budget across all active campaigns today",
+	})
+
+	budgetUtilizationGauge = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "campaigns_budget_utilization",
+		Help: "Average budget utilization percentage across all active campaigns",
+	})
 )
 
 // MemoryCampaignStore implements CampaignStore using in-memory maps with RWMutex
@@ -56,6 +87,9 @@ func (s *MemoryCampaignStore) LoadCampaigns(ctx context.Context) error {
 		s.creatives[creative.ID] = creative
 	}
 
+	// Update Prometheus metrics
+	s.updateMetrics()
+
 	return nil
 }
 
@@ -105,6 +139,9 @@ func (s *MemoryCampaignStore) UpdateSpent(campaignID string, amount float64) err
 
 	campaign.SpentToday += amount
 
+	// Update Prometheus metrics after budget change
+	s.updateMetrics()
+
 	return nil
 }
 
@@ -116,4 +153,44 @@ func (s *MemoryCampaignStore) RefreshCampaigns(ctx context.Context) error {
 // Close closes any open connections (no-op for memory store)
 func (s *MemoryCampaignStore) Close() error {
 	return nil
+}
+
+// updateMetrics updates Prometheus gauges with current campaign metrics
+// T099: Update Prometheus gauges for monitoring
+func (s *MemoryCampaignStore) updateMetrics() {
+	var activeCount int
+	var totalBudget, remainingBudget, spentBudget float64
+	var utilizationSum float64
+
+	for _, campaign := range s.campaigns {
+		if campaign.Status == "active" {
+			totalBudget += campaign.DailyBudget
+			spentBudget += campaign.SpentToday
+			remaining := campaign.DailyBudget - campaign.SpentToday
+			if remaining > 0 {
+				activeCount++
+				remainingBudget += remaining
+			}
+
+			// Calculate utilization percentage for this campaign
+			if campaign.DailyBudget > 0 {
+				utilization := (campaign.SpentToday / campaign.DailyBudget) * 100.0
+				utilizationSum += utilization
+			}
+		}
+	}
+
+	// Update gauges
+	activeCampaignsGauge.Set(float64(activeCount))
+	totalBudgetGauge.Set(totalBudget)
+	remainingBudgetGauge.Set(remainingBudget)
+	spentBudgetGauge.Set(spentBudget)
+
+	// Calculate average utilization
+	if activeCount > 0 {
+		avgUtilization := utilizationSum / float64(len(s.campaigns))
+		budgetUtilizationGauge.Set(avgUtilization)
+	} else {
+		budgetUtilizationGauge.Set(0)
+	}
 }
