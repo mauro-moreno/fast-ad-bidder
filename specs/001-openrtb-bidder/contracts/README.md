@@ -409,3 +409,252 @@ openapi-enforcer validate contracts/openapi.yaml
 - Google Ad Exchange RTB Guide: https://developers.google.com/authorized-buyers/rtb/openrtb-guide
 - Prebid OpenRTB Library: https://github.com/prebid/openrtb
 - OpenAPI 3.0 Specification: https://spec.openapis.org/oas/v3.0.3
+
+---
+
+## Usage Examples
+
+### Testing with curl
+
+#### 1. Send Bid Request
+
+```bash
+curl -X POST http://localhost:8080/bid \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "test-auction-001",
+    "imp": [{
+      "id": "imp-1",
+      "banner": {
+        "w": 300,
+        "h": 250
+      },
+      "bidfloor": 1.0
+    }],
+    "site": {
+      "domain": "example.com",
+      "page": "https://example.com/news/article"
+    },
+    "device": {
+      "ip": "192.0.2.1",
+      "devicetype": 2,
+      "geo": {
+        "country": "USA",
+        "region": "CA"
+      }
+    }
+  }'
+```
+
+#### 2. Send Win Notification
+
+```bash
+# Extract bid ID from response above, then:
+curl -X GET "http://localhost:8080/win?bid=<BID_ID>&price=2500000&currency=USD"
+```
+
+#### 3. Health Check
+
+```bash
+curl http://localhost:8080/health
+```
+
+#### 4. Prometheus Metrics
+
+```bash
+curl http://localhost:8080/metrics
+```
+
+### Testing with mTLS (Production)
+
+When mTLS is enabled, include client certificates:
+
+```bash
+curl -X POST https://localhost:8080/bid \
+  --cert config/certs/client.crt \
+  --key config/certs/client.key \
+  --cacert config/certs/ca.crt \
+  -H "Content-Type: application/json" \
+  -d @tests/fixtures/bid_requests.json
+```
+
+### Python Example
+
+```python
+import requests
+import json
+
+# Bid request
+bid_request = {
+    "id": "python-test-001",
+    "imp": [{
+        "id": "imp-1",
+        "banner": {"w": 728, "h": 90},
+        "bidfloor": 1.5
+    }],
+    "site": {
+        "domain": "news.example.com",
+        "page": "https://news.example.com/article/123"
+    },
+    "device": {
+        "ip": "192.0.2.10",
+        "devicetype": 2,
+        "geo": {"country": "USA", "region": "NY"}
+    }
+}
+
+# Send bid request
+response = requests.post(
+    "http://localhost:8080/bid",
+    json=bid_request,
+    headers={"Content-Type": "application/json"}
+)
+
+print(f"Status: {response.status_code}")
+print(f"Response: {json.dumps(response.json(), indent=2)}")
+
+# Extract bid ID if successful
+if response.status_code == 200:
+    bid_response = response.json()
+    if bid_response.get("seatbid"):
+        bid_id = bid_response["seatbid"][0]["bid"][0]["id"]
+        print(f"\nBid ID: {bid_id}")
+        
+        # Send win notification
+        win_response = requests.get(
+            f"http://localhost:8080/win?bid={bid_id}&price=2500000&currency=USD"
+        )
+        print(f"Win Status: {win_response.status_code}")
+```
+
+### Go Example
+
+```go
+package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+)
+
+type BidRequest struct {
+    ID     string       `json:"id"`
+    Imp    []Impression `json:"imp"`
+    Site   *Site        `json:"site,omitempty"`
+    Device *Device      `json:"device"`
+}
+
+type Impression struct {
+    ID       string  `json:"id"`
+    Banner   *Banner `json:"banner,omitempty"`
+    BidFloor float64 `json:"bidfloor"`
+}
+
+type Banner struct {
+    W int `json:"w"`
+    H int `json:"h"`
+}
+
+type Site struct {
+    Domain string `json:"domain"`
+    Page   string `json:"page"`
+}
+
+type Device struct {
+    IP         string `json:"ip"`
+    DeviceType int    `json:"devicetype"`
+    Geo        *Geo   `json:"geo,omitempty"`
+}
+
+type Geo struct {
+    Country string `json:"country"`
+    Region  string `json:"region,omitempty"`
+}
+
+func main() {
+    bidReq := BidRequest{
+        ID: "go-test-001",
+        Imp: []Impression{{
+            ID:       "imp-1",
+            Banner:   &Banner{W: 300, H: 250},
+            BidFloor: 1.0,
+        }},
+        Site: &Site{
+            Domain: "example.com",
+            Page:   "https://example.com/page",
+        },
+        Device: &Device{
+            IP:         "192.0.2.1",
+            DeviceType: 2,
+            Geo:        &Geo{Country: "USA"},
+        },
+    }
+
+    body, _ := json.Marshal(bidReq)
+    
+    resp, err := http.Post(
+        "http://localhost:8080/bid",
+        "application/json",
+        bytes.NewBuffer(body),
+    )
+    if err != nil {
+        panic(err)
+    }
+    defer resp.Body.Close()
+
+    respBody, _ := io.ReadAll(resp.Body)
+    fmt.Printf("Status: %d\n", resp.StatusCode)
+    fmt.Printf("Response: %s\n", string(respBody))
+}
+```
+
+### Load Testing
+
+```bash
+# Quick smoke test
+k6 run tests/load/bid_endpoint.js
+
+# Full 1000 QPS validation
+k6 run --duration 5m tests/load/bid_latency_test.js
+```
+
+---
+
+## Contract Testing
+
+The service includes Pact contract tests to ensure OpenRTB 2.5 compliance:
+
+```bash
+# Run contract tests
+go test -v ./tests/contract/...
+
+# Generate Pact files for consumer contract testing
+go test -v ./tests/contract/bid_request_validation_test.go
+```
+
+## Monitoring
+
+After sending requests, check metrics:
+
+```bash
+# View all metrics
+curl http://localhost:8080/metrics
+
+# Filter specific metrics
+curl http://localhost:8080/metrics | grep http_requests_total
+curl http://localhost:8080/metrics | grep wins_
+curl http://localhost:8080/metrics | grep campaigns_budget
+```
+
+Key metrics to monitor:
+- `http_request_duration_seconds` - Request latency histogram
+- `bids_total{type="bid"}` - Successful bids counter
+- `bids_total{type="nobid"}` - No-bid responses counter
+- `wins_received_total` - Win notifications received
+- `wins_orphaned_total` - Orphaned wins (not in cache)
+- `active_campaigns_total` - Active campaigns with budget
+- `campaigns_budget_remaining` - Remaining budget across campaigns
+

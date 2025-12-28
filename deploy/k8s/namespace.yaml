@@ -1,0 +1,8 @@
+# T112: Kubernetes namespace for bidder service
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fast-ad-bidder
+  labels:
+    app.kubernetes.io/name: fast-ad-bidder
+    app.kubernetes.io/component: rtb-bidder

@@ -1,0 +1,28 @@
+# T111: Grafana datasource provisioning
+apiVersion: 1
+
+datasources:
+  # Prometheus datasource for metrics
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: 15s
+      httpMethod: POST
+
+  # InfluxDB datasource for win events
+  - name: InfluxDB
+    type: influxdb
+    access: proxy
+    url: http://influxdb:8086
+    editable: false
+    jsonData:
+      version: Flux
+      organization: fast-ad-bidder
+      defaultBucket: metrics
+      tlsSkipVerify: true
+    secureJsonData:
+      token: dev-token-change-in-production

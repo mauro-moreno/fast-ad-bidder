@@ -1,0 +1,29 @@
+# T112: ServiceMonitor for Prometheus Operator
+# Note: Only needed if using Prometheus Operator
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: bidder-metrics
+  namespace: fast-ad-bidder
+  labels:
+    app.kubernetes.io/name: fast-ad-bidder
+    app.kubernetes.io/component: monitoring
+    prometheus: kube-prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fast-ad-bidder
+      app.kubernetes.io/component: bidder
+  
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+      scheme: https
+      tlsConfig:
+        insecureSkipVerify: true
+  
+  namespaceSelector:
+    matchNames:
+      - fast-ad-bidder

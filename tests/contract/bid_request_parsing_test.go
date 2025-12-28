@@ -46,4 +46,3 @@ func TestEmptyBodyReturns400(t *testing.T) {
 	// Assert response
 	assert.Equal(t, http.StatusBadRequest, rec.Code, "Empty body should return 400 Bad Request")
 }
-

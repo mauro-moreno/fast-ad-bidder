@@ -1,78 +1,140 @@
-version: '3.8'
+# T111: Docker Compose configuration for local development
+version: '3.9'
 
 services:
+  # PostgreSQL for campaign/creative storage
   postgres:
     image: postgres:14-alpine
     container_name: bidder-postgres
     environment:
-      POSTGRES_USER: bidder
-      POSTGRES_PASSWORD: password
       POSTGRES_DB: bidder
+      POSTGRES_USER: bidder
+      POSTGRES_PASSWORD: bidder_dev_password
     ports:
       - "5432:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./config/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-      - ./config/sample_data.sql:/docker-entrypoint-initdb.d/02-sample_data.sql
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bidder"]
       interval: 10s
       timeout: 5s
       retries: 5
 
+  # InfluxDB for metrics and win tracking
   influxdb:
     image: influxdb:2.7-alpine
     container_name: bidder-influxdb
     environment:
       DOCKER_INFLUXDB_INIT_MODE: setup
       DOCKER_INFLUXDB_INIT_USERNAME: admin
-      DOCKER_INFLUXDB_INIT_PASSWORD: password123
+      DOCKER_INFLUXDB_INIT_PASSWORD: admin_password
       DOCKER_INFLUXDB_INIT_ORG: fast-ad-bidder
       DOCKER_INFLUXDB_INIT_BUCKET: metrics
-      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: dev-token-please-change-in-production
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: dev-token-change-in-production
     ports:
       - "8086:8086"
     volumes:
-      - influxdb-data:/var/lib/influxdb2
+      - influxdb_data:/var/lib/influxdb2
     healthcheck:
       test: ["CMD", "influx", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
+  # Prometheus for metrics collection
   prometheus:
     image: prom/prometheus:latest
     container_name: bidder-prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
     ports:
       - "9090:9090"
     volumes:
-      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./config/prometheus/alerts.yml:/etc/prometheus/alerts.yml
-      - prometheus-data:/prometheus
+      - ./config/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./config/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus_data:/prometheus
     depends_on:
-      - influxdb
+      - bidder
 
+  # Grafana for dashboards
   grafana:
     image: grafana/grafana:latest
     container_name: bidder-grafana
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
-      GF_INSTALL_PLUGINS: ""
+      GF_USERS_ALLOW_SIGN_UP: "false"
     ports:
       - "3000:3000"
     volumes:
-      - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards
-      - grafana-data:/var/lib/grafana
+      - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./config/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - grafana_data:/var/lib/grafana
     depends_on:
       - prometheus
       - influxdb
 
+  # Fast Ad Bidder service
+  bidder:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fast-ad-bidder
+    ports:
+      - "8080:8080"
+    environment:
+      # Server
+      SERVER_PORT: 8080
+      SERVER_READ_TIMEOUT: 5s
+      SERVER_WRITE_TIMEOUT: 10s
+      
+      # Database
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: bidder
+      DB_USER: bidder
+      DB_PASSWORD: bidder_dev_password
+      DB_SSL_MODE: disable
+      DB_MAX_OPEN_CONNS: 25
+      DB_MAX_IDLE_CONNS: 5
+      
+      # InfluxDB
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_TOKEN: dev-token-change-in-production
+      INFLUX_ORG: fast-ad-bidder
+      INFLUX_BUCKET: metrics
+
+      # TLS (disabled for local Docker)
+      TLS_ENABLED: "false"
+      
+      # Logging
+      LOG_LEVEL: debug
+      
+      # Budget
+      BUDGET_RESET_HOUR: 0
+      
+      # Win processing
+      WIN_QUEUE_SIZE: 10000
+      WIN_WORKER_COUNT: 4
+      WIN_CACHE_TTL: 5m
+    depends_on:
+      postgres:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
 volumes:
-  postgres-data:
-  influxdb-data:
-  prometheus-data:
-  grafana-data:
+  postgres_data:
+  influxdb_data:
+  prometheus_data:
+  grafana_data:

@@ -6,16 +6,16 @@ import (
 
 // Campaign represents a loaded campaign in memory
 type Campaign struct {
-	ID            string                 `json:"id"`
-	Name          string                 `json:"name"`
-	Status        string                 `json:"status"`
-	DailyBudget   float64                `json:"daily_budget"`
-	SpentToday    float64                `json:"spent_today"`
-	Targeting     map[string]interface{} `json:"targeting"`
-	BidStrategy   string                 `json:"bid_strategy"`
-	CreativeIDs   []string               `json:"creative_ids"`
-	BidFloorCPM   float64                `json:"bid_floor_cpm"`
-	MaxBidCPM     float64                `json:"max_bid_cpm"`
+	ID          string                 `json:"id"`
+	Name        string                 `json:"name"`
+	Status      string                 `json:"status"`
+	DailyBudget float64                `json:"daily_budget"`
+	SpentToday  float64                `json:"spent_today"`
+	Targeting   map[string]interface{} `json:"targeting"`
+	BidStrategy string                 `json:"bid_strategy"`
+	CreativeIDs []string               `json:"creative_ids"`
+	BidFloorCPM float64                `json:"bid_floor_cpm"`
+	MaxBidCPM   float64                `json:"max_bid_cpm"`
 }
 
 // Creative represents a creative asset

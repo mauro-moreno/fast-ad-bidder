@@ -1,18 +1,38 @@
+# T111: Prometheus configuration for bidder monitoring
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+  external_labels:
+    cluster: 'local-dev'
+    service: 'fast-ad-bidder'
 
-alerting:
-  alertmanagers:
-    - static_configs:
-        - targets: []
+# Alertmanager configuration (optional)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093
 
+# Load alert rules
 rule_files:
-  - "alerts.yml"
+  - 'alerts.yml'
 
+# Scrape configurations
 scrape_configs:
+  # Bidder service metrics
   - job_name: 'bidder'
     static_configs:
-      - targets: ['host.docker.internal:8080']
+      - targets: ['bidder:8080']
+        labels:
+          service: 'bidder'
+          environment: 'local'
     metrics_path: '/metrics'
     scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'

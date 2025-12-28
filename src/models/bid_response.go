@@ -18,15 +18,15 @@ type NoBidReason int
 
 const (
 	// Standard OpenRTB No-Bid Reason Codes (Section 5.19)
-	NoBidReasonUnknownError        NoBidReason = 0
-	NoBidReasonTechnicalError      NoBidReason = 1
-	NoBidReasonInvalidRequest      NoBidReason = 2
-	NoBidReasonKnownWebSpider      NoBidReason = 3
-	NoBidReasonNonHumanTraffic     NoBidReason = 4
-	NoBidReasonProxyIP             NoBidReason = 5
-	NoBidReasonUnsupportedDevice   NoBidReason = 6
-	NoBidReasonBlockedPublisher    NoBidReason = 7
-	NoBidReasonUnmatchedUser       NoBidReason = 8
+	NoBidReasonUnknownError      NoBidReason = 0
+	NoBidReasonTechnicalError    NoBidReason = 1
+	NoBidReasonInvalidRequest    NoBidReason = 2
+	NoBidReasonKnownWebSpider    NoBidReason = 3
+	NoBidReasonNonHumanTraffic   NoBidReason = 4
+	NoBidReasonProxyIP           NoBidReason = 5
+	NoBidReasonUnsupportedDevice NoBidReason = 6
+	NoBidReasonBlockedPublisher  NoBidReason = 7
+	NoBidReasonUnmatchedUser     NoBidReason = 8
 
 	// Custom No-Bid Reason Codes (extension)
 	NoBidReasonTimeout             NoBidReason = 100

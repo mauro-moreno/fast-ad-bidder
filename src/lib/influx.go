@@ -73,12 +73,12 @@ func (c *InfluxClient) WriteWinNotification(ctx context.Context, win *WinNotific
 
 // BidMetric represents a bid processing metric
 type BidMetric struct {
-	CampaignID   string
-	Result       string // "bid" or "nobid"
-	Latency      float64
-	BidPrice     float64
-	BidFloorCPM  float64
-	Timestamp    time.Time
+	CampaignID  string
+	Result      string // "bid" or "nobid"
+	Latency     float64
+	BidPrice    float64
+	BidFloorCPM float64
+	Timestamp   time.Time
 }
 
 // WriteBidMetric writes a bid processing metric to InfluxDB

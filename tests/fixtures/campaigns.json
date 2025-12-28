@@ -1,0 +1,152 @@
+{
+  "campaigns": [
+    {
+      "id": "campaign-001",
+      "name": "US Desktop Banner Campaign",
+      "status": "active",
+      "daily_budget": 1000.00,
+      "spent_today": 250.00,
+      "targeting": {
+        "geo": {
+          "countries": ["USA"],
+          "regions": ["CA", "NY", "TX"]
+        },
+        "device_types": [2],
+        "domains": {
+          "whitelist": ["example.com", "news.example.com", "blog.example.com"]
+        }
+      },
+      "bid_strategy": "fixed_cpm",
+      "bid_floor_cpm": 0.50,
+      "max_bid_cpm": 5.00,
+      "creative_ids": ["creative-001", "creative-002"]
+    },
+    {
+      "id": "campaign-002",
+      "name": "Global Mobile App Campaign",
+      "status": "active",
+      "daily_budget": 2000.00,
+      "spent_today": 150.00,
+      "targeting": {
+        "geo": {
+          "countries": ["USA", "CAN", "GBR"]
+        },
+        "device_types": [1, 4],
+        "app_bundles": ["com.example.app", "com.example.game"]
+      },
+      "bid_strategy": "fixed_cpm",
+      "bid_floor_cpm": 1.00,
+      "max_bid_cpm": 8.00,
+      "creative_ids": ["creative-003"]
+    },
+    {
+      "id": "campaign-003",
+      "name": "Premium Publisher Campaign",
+      "status": "active",
+      "daily_budget": 500.00,
+      "spent_today": 450.00,
+      "targeting": {
+        "geo": {
+          "countries": ["USA"]
+        },
+        "device_types": [2],
+        "domains": {
+          "whitelist": ["premium.com"]
+        }
+      },
+      "bid_strategy": "fixed_cpm",
+      "bid_floor_cpm": 2.00,
+      "max_bid_cpm": 10.00,
+      "creative_ids": ["creative-004"]
+    },
+    {
+      "id": "campaign-004",
+      "name": "Budget Exhausted Campaign",
+      "status": "active",
+      "daily_budget": 100.00,
+      "spent_today": 100.00,
+      "targeting": {
+        "geo": {
+          "countries": ["USA"]
+        },
+        "device_types": [2]
+      },
+      "bid_strategy": "fixed_cpm",
+      "bid_floor_cpm": 1.00,
+      "max_bid_cpm": 5.00,
+      "creative_ids": ["creative-001"]
+    },
+    {
+      "id": "campaign-005",
+      "name": "Paused Campaign",
+      "status": "paused",
+      "daily_budget": 1000.00,
+      "spent_today": 0.00,
+      "targeting": {
+        "geo": {
+          "countries": ["USA"]
+        },
+        "device_types": [2]
+      },
+      "bid_strategy": "fixed_cpm",
+      "bid_floor_cpm": 1.00,
+      "max_bid_cpm": 5.00,
+      "creative_ids": ["creative-001"]
+    }
+  ],
+  "creatives": [
+    {
+      "id": "creative-001",
+      "campaign_id": "campaign-001",
+      "width": 300,
+      "height": 250,
+      "markup": "<div>Ad Content 300x250</div>",
+      "approval_status": "approved",
+      "exchange_approvals": {
+        "google": "approved"
+      }
+    },
+    {
+      "id": "creative-002",
+      "campaign_id": "campaign-001",
+      "width": 728,
+      "height": 90,
+      "markup": "<div>Ad Content 728x90</div>",
+      "approval_status": "approved",
+      "exchange_approvals": {
+        "google": "approved"
+      }
+    },
+    {
+      "id": "creative-003",
+      "campaign_id": "campaign-002",
+      "width": 320,
+      "height": 50,
+      "markup": "<div>Mobile Ad 320x50</div>",
+      "approval_status": "approved",
+      "exchange_approvals": {
+        "google": "approved"
+      }
+    },
+    {
+      "id": "creative-004",
+      "campaign_id": "campaign-003",
+      "width": 300,
+      "height": 600,
+      "markup": "<div>Premium Ad 300x600</div>",
+      "approval_status": "approved",
+      "exchange_approvals": {
+        "google": "approved"
+      }
+    },
+    {
+      "id": "creative-005",
+      "campaign_id": "campaign-001",
+      "width": 300,
+      "height": 250,
+      "markup": "<div>Pending Creative</div>",
+      "approval_status": "pending",
+      "exchange_approvals": {}
+    }
+  ]
+}

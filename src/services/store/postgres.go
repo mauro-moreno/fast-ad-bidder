@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 )
 
 // PostgresLoader implements CampaignLoader for PostgreSQL
@@ -48,8 +48,8 @@ func (l *PostgresLoader) loadCampaigns(ctx context.Context) ([]*Campaign, error)
 			targeting,
 			bid_strategy,
 			creative_ids,
-			bid_floor_cpm,
-			max_bid_cpm
+			fixed_cpm,
+			max_cpm
 		FROM campaigns
 		WHERE status IN ('active', 'paused')
 		ORDER BY created_at DESC
@@ -65,7 +65,8 @@ func (l *PostgresLoader) loadCampaigns(ctx context.Context) ([]*Campaign, error)
 	for rows.Next() {
 		var campaign Campaign
 		var targetingJSON []byte
-		var creativeIDsJSON []byte
+		var fixedCPM sql.NullFloat64
+		var maxCPM sql.NullFloat64
 
 		err := rows.Scan(
 			&campaign.ID,
@@ -75,22 +76,25 @@ func (l *PostgresLoader) loadCampaigns(ctx context.Context) ([]*Campaign, error)
 			&campaign.SpentToday,
 			&targetingJSON,
 			&campaign.BidStrategy,
-			&creativeIDsJSON,
-			&campaign.BidFloorCPM,
-			&campaign.MaxBidCPM,
+			pq.Array(&campaign.CreativeIDs),
+			&fixedCPM,
+			&maxCPM,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan campaign: %w", err)
 		}
 
+		// Handle nullable float fields
+		if fixedCPM.Valid {
+			campaign.BidFloorCPM = fixedCPM.Float64
+		}
+		if maxCPM.Valid {
+			campaign.MaxBidCPM = maxCPM.Float64
+		}
+
 		// Parse targeting JSON
 		if err := json.Unmarshal(targetingJSON, &campaign.Targeting); err != nil {
 			return nil, fmt.Errorf("failed to parse targeting for campaign %s: %w", campaign.ID, err)
-		}
-
-		// Parse creative IDs JSON
-		if err := json.Unmarshal(creativeIDsJSON, &campaign.CreativeIDs); err != nil {
-			return nil, fmt.Errorf("failed to parse creative_ids for campaign %s: %w", campaign.ID, err)
 		}
 
 		campaigns = append(campaigns, &campaign)

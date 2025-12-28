@@ -1,0 +1,75 @@
+# T112: Kubernetes Ingress for external access
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: bidder-ingress
+  namespace: fast-ad-bidder
+  labels:
+    app.kubernetes.io/name: fast-ad-bidder
+    app.kubernetes.io/component: ingress
+  annotations:
+    # NGINX Ingress annotations (adjust for your ingress controller)
+    nginx.ingress.kubernetes.io/backend-protocol: "HTTPS"
+    nginx.ingress.kubernetes.io/ssl-passthrough: "true"
+    nginx.ingress.kubernetes.io/auth-tls-verify-client: "on"
+    nginx.ingress.kubernetes.io/auth-tls-secret: "fast-ad-bidder/bidder-ca-cert"
+    
+    # Rate limiting for DDoS protection
+    nginx.ingress.kubernetes.io/limit-rps: "1000"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "5"
+    
+    # Timeouts aligned with bidder SLA
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "5"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "10"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "10"
+    
+    # Certificate manager (if using cert-manager)
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  
+  # TLS configuration
+  tls:
+    - hosts:
+        - bidder.example.com
+      secretName: bidder-tls-cert
+  
+  rules:
+    - host: bidder.example.com
+      http:
+        paths:
+          # Bid endpoint
+          - path: /bid
+            pathType: Exact
+            backend:
+              service:
+                name: bidder-service
+                port:
+                  number: 443
+          
+          # Win notification endpoint
+          - path: /win
+            pathType: Exact
+            backend:
+              service:
+                name: bidder-service
+                port:
+                  number: 443
+          
+          # Health check (internal only, consider removing or restricting)
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: bidder-service
+                port:
+                  number: 443
+          
+          # Metrics endpoint (restrict to monitoring namespace)
+          - path: /metrics
+            pathType: Exact
+            backend:
+              service:
+                name: bidder-service
+                port:
+                  number: 443

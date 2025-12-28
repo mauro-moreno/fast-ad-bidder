@@ -19,7 +19,7 @@ type Metrics struct {
 	ErrorsTotal *prometheus.CounterVec
 
 	// Campaign metrics
-	CampaignsActive      prometheus.Gauge
+	CampaignsActive         prometheus.Gauge
 	CampaignBudgetRemaining *prometheus.GaugeVec
 }
 
